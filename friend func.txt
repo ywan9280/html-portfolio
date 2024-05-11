@@ -1,0 +1,117 @@
+    {#               Get friend list from server , display on the screen(on click the button)                    #}
+    function getFriendlist(username){
+        
+        $.ajax({
+            type: 'POST',
+            url: '/get_friend_list',
+            data: {'username': username},
+            success: function(response){
+                var ChatListContainer = $('#chat_list');
+                ChatListContainer.empty();
+                response = response.replace(/^,/, '');
+                $('#friend_list').html(response);
+
+                var items = response.split(',');
+                items.forEach(function(item) {
+                    var listItem = $('<div>').text(item.trim());
+
+                    receiver = item.trim();
+                     
+                    var chatButton = $('<button>').text('chat');
+                    listItem.append(chatButton);
+                    ChatListContainer.append(listItem);
+                    chatButton.click(function(){
+                            
+                            socket.emit("join", username, item.trim(), (res) => {
+
+                            // res is a string with the error message if the error occurs
+
+                            // this is a pretty bad way of doing error handling, but watevs
+
+                            if (typeof res != "number") {
+                                alert(res);
+                                return;
+                            }
+
+                            // set the room id variable to the room id returned by the server
+                            room_id = res;
+                            Cookies.set("room_id", room_id);
+
+                            // now we'll show the input box, so the user can input their message
+                            $("#chat_box").hide();
+
+                            $("#input_box").show();
+                        });
+                    });
+                });
+
+                
+            },
+            error: function(error){
+                console.log('Error:', error);
+            }
+
+        });
+    }
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+    @app.route('/get_friend_list', methods=['POST'])
+def get_friend_list():
+    username = request.form['username']
+    friend_list = fetch_friend_list(username)
+    
+    cookie_username = request.cookies.get("username") #add
+    cookie_sessionID = request.cookies.get("session_id") #add
+    sessionID = db.get_sessionID(username) #add
+
+    if username is None or cookie_username is None or cookie_sessionID is None: #add
+        return "Unauthorized access"
+    
+    if username != cookie_username or cookie_sessionID != sessionID: #add
+        return "Unauthorized access"
+    
+    return friend_list
+
+def fetch_friend_list(username):
+    
+    cookie_username = request.cookies.get("username") #add
+    cookie_sessionID = request.cookies.get("session_id") #add
+    sessionID = db.get_sessionID(username) #add
+
+    if username is None or cookie_username is None or cookie_sessionID is None: #add
+        return "Unauthorized access get_friend_list"
+    
+    if username != cookie_username or cookie_sessionID != sessionID: #add
+        return "Unauthorized access get_friend_list"
+    
+
+    conn = sqlite3.connect(global_str_variable)
+    cursor = conn.cursor()
+    cursor.execute("SELECT friend_list FROM user WHERE username=?", (username,))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else None
+
+
+
+                    socket.emit("getFriendstatus", str(receiver));
+                    listItem.append(friendStatusList[0]);
+                    listItem.append(friendStatusList[1]);
+
+
+                        socket.on('friendStatusResponse', function(data) {
+        friendStatusList = data;
+        console.log('Friend status list updated:', friendStatusList);
+    });

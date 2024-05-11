@@ -1,0 +1,56 @@
+<!-- 
+Sign up page, pretty much the same as login.
+-->
+{% extends 'base.jinja' %}
+
+
+{% block content %} 
+    <h1>Sign Up</h1>
+    <p>Username</p>
+    <input id="username"/>
+    <p>Password</p>
+    <input id="password" type="password"/>
+    <button onclick="signup()">Sign up</button>
+
+    <script>
+        function isValidURL(string) {
+            if (string.length == 0) {
+                return false;
+            }
+            if (string[0] == "/") {
+                return true;
+            }
+            return false;
+        }
+
+        function validatePassword(password) { //add password in certain format
+            let regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+            return regex.test(password);
+        }
+
+        // this function is identical to login(), see login.jinja
+        async function signup() {
+            let username = $("#username").val(); //add
+            let password = $("#password").val(); //add
+
+            if (!validatePassword(password)) { //add
+                alert("The password must contain both uppercase and lowercase letters, digits, and be at least 8 characters long!");
+                return;
+            }
+            let hashedPassword = CryptoJS.SHA256(password).toString(); //add
+            localStorage.setItem("hashedPassword", hashedPassword); //add
+            localStorage.setItem("Password", password); //add
+            let loginURL = "{{ url_for('signup_user') }}";
+            let res = await axios.post(loginURL, {
+                //add change
+                username: username,
+                password: hashedPassword
+            });
+            if (!isValidURL(res.data)) {
+                alert(res.data);
+                return;
+            }
+            window.open(res.data, "_self")
+        }
+    </script>
+{% endblock %}

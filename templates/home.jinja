@@ -1,0 +1,1086 @@
+<!-- 
+    Here you'll find the main exhibit: the chat application code. Feel free to look around!
+-->
+{% extends 'base.jinja' %}
+
+
+{% block content %} 
+   <style>
+    nav {
+        border-bottom: 1px solid black;
+        overflow: auto
+    }
+
+    #message_box {
+        border: 1px solid black; 
+        height: 200px;                                         {# make message box smaller #}
+        width: 800px; 
+        overflow: auto;
+        padding: 2px;
+    }
+
+    .text  {
+        margin-top: 2px;
+        margin-bottom: 2px;
+    }
+
+</style>
+
+<!--Navbar, you'll see the username here-->
+<nav style="border-bottom: 1px solid black;">
+    <ol style="float: right">
+        <li style="display:inline-block">User type:  {{ type }}   </li>
+        <li style="display:inline-block">Username:  {{ username }} </li>
+        <li style="display:inline-block">User mute:  {{ mute }}   </li>
+    </ol>
+</nav>
+
+<h1>Messaging App </h1>
+
+<main>
+    
+
+
+    <!-- The messages are displayed here -->
+    <section id="message_box"></section>
+    
+
+    {#                   The friend list is displayed here                       #}
+    
+    <h2>Friend list</h2>
+    <button onclick="getFriendlist('{{username}}')">Get Friend List</button>                
+    <div id="friend_list"></div>
+
+    <div id="chat_list"></div>
+
+    <button onclick="setPrivate('{{ username }}')">Private</button>
+    <button onclick="setBusy('{{ username }}')">Busy</button>
+
+    <button onclick="public_chat('{{ username }}',1001)">Public chat room 1</button>
+    <button onclick="public_chat('{{ username }}',1002)">Public chat room 2</button>
+    <button onclick="public_chat('{{ username }}',1003)">Public chat room 3</button>
+
+
+
+    {#              Send a friend request to someone(button)                     #}
+    <input type="text" id="friendName" placeholder="Enter friend's name">
+
+    <button onclick="sendrequest('{{ username }}')">Add Friend</button>
+
+
+
+
+    <!-- These part ideally should be a form element, 
+    but I wrote this code a year ago and I don't want to break anything...-->
+
+    <section id="chat_box">
+
+        <p class="text">Chat with: </p>
+
+        <input id="receiver" placeholder="username">
+
+        <!-- MDN says its bad practice to use the onclick attribute,
+        but we're using it anyways coz its easy :)-->
+
+        <button onclick="join_room()">Chat</button>
+
+    </section>
+
+
+
+
+
+    <!-- The (message) input box is set to display: none initially, 
+    this means the input box is "invisible" initially-->
+
+    <section id="input_box" style="display: none" >
+        <p class="text">Message: </p>
+        <input id="message" placeholder="message">
+        <button onclick="send()">Send</button>
+        <button onclick="leave()">Leave Room</button>
+    </section>
+
+
+
+
+    {#               Get  Request list and wait list                    #}
+    
+
+
+    <button onclick="getWaitlist('{{ username }}')">waiting list: </button>
+    <div id="wait_list"></div>
+    <button onclick="getRequestlist('{{ username }}')">request list: </button>
+    <div id="request"></div>
+
+
+
+
+
+
+    <button onclick="Knowledge()">View Knowledge Repository</button>
+    <div id="knowledgeBox"></div>
+
+
+    <div style="float: right;">
+    <form id="articleForm">
+        
+        <label for="content" >Content for your new article:</label><br>
+        <textarea id="content" name="content" rows="10" style="width: 300px;"></textarea><br>
+        
+        <button type="button" onclick="postArticle()">Submit</button>
+    </form>
+    </div>
+
+    <p class="text2">Mute users: </p>
+    <input id="mute" placeholder="mute...">
+    <button type="button" onclick="mute()">mute</button>
+    
+    <br>
+
+
+
+    <div id="myModal" class="modal">
+
+    
+    <div class="modal-content" id="modelContent">
+        <span class="close" onclick="closeDialog()">&times;</span>
+        
+    </div>
+
+    </div>
+    
+    
+    
+    
+</main>
+
+<script src="/static/js/libs/socket.io.min.js"></script>
+
+
+
+{#              Include from cloud some js                     #}
+
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsencrypt/3.0.0/jsencrypt.min.js"></script>
+
+{#<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"></script>#}
+
+<script>
+
+    const socket = io();
+    let Password = localStorage.getItem("Password"); //add
+    
+
+    function postArticle(){
+        var muteState= "{{mute}}";
+        if(muteState=='False'){
+            var content = document.getElementById("content").value;
+            $.ajax({
+                type: 'POST',
+                url: '/post_article',
+                data: {'username': username, 'content': content},
+                success: function(response){
+                    
+                },
+                error: function(error){
+                    
+                }
+            });
+        }else{
+            alert("staff has muted you, you cannot post article.");
+        }
+        
+    }
+
+
+    
+    
+
+
+    function openDialog(item) {
+        var modalContent = document.getElementById("modelContent");
+        if (modalContent) {
+
+
+            var contentStartIndex = item.indexOf('content: ');
+            var content;
+            if (contentStartIndex !== -1) {
+                
+                var content = item.slice(contentStartIndex + 'content: '.length);
+                
+                
+                content = content.replace(/<br>/g, ''); 
+                content = content.replace('</div>', ''); 
+
+                
+            }
+
+
+            modalContent.innerHTML = '<span class="close" onclick="closeDialog()">&times;</span>';
+            var title = document.createElement("h2");
+            title.textContent = "Modify Article";
+            modalContent.appendChild(title);
+
+
+            var textarea = document.createElement("textarea");
+            textarea.textContent = content; 
+            modalContent.appendChild(textarea);
+
+
+            var confirmButton = document.createElement("button");
+            confirmButton.textContent = "Confirm";
+            confirmButton.addEventListener("click", function() {
+                var modifiedContent = textarea.value;
+                $.ajax({
+                    url: '/modify_article',
+                    type: 'POST',
+                    data: { content: modifiedContent, item:item },
+                    success: function(response) {
+                        Knowledge();
+                    },
+                    error: function(error) {
+                        console.error('Error sending content:', error);
+                    }
+                });
+                
+                closeDialog();
+            });
+            modalContent.appendChild(confirmButton);
+
+        
+        document.getElementById("myModal").style.display = "block";}
+        
+    }
+
+        
+    function closeDialog() {
+        document.getElementById("myModal").style.display = "none";
+    }
+
+
+    function Knowledge(){
+        $.ajax({
+            url: '/get_knowledge',
+            method: 'POST',
+            
+            success: function(response){
+                if(response!=''){
+                    
+                    $('#knowledgeBox').empty();
+                    response.forEach(function(item){
+                        var itemDiv = $('<div>').attr('id', item).html(item);
+                        var deleteButton = $('<button>').text('delete');
+                        var input = $('<input>').attr({
+                            'type': 'text',
+                            'placeholder': 'comment'
+                        });
+                        var commentButton = $('<button>').text('comment');
+                        var view = $('<button>').text('view');
+                        commentButton.on('click',function(){
+                            var muteState = "{{mute}}";
+                            if(muteState=='False'){
+                                var comment = $(this).prev('input').val();
+                                $.ajax({
+                                    url: '/save_comment',
+                                    method: 'POST',
+                                    data:{
+                                        comment: comment,
+                                        username: username,
+                                        item: item
+                                    },
+                                    success: function(response){
+                                        alert("comment saved");
+                                        
+                                    },
+                                    error: function(error){
+
+                                    }
+                                });
+                            }else{
+                                alert("You have been muted. You cannot post comments.");
+                            }
+                           
+                        });
+                        deleteButton.click(function(){
+                            var userType = "{{type}}";
+                            var username = "{{username}}"
+                            if (userType!='student'){
+                                itemDiv.hide();
+                                $.ajax({
+                                    type: 'POST',
+                                    url: '/delete_article',
+                                    data:{
+                                        'item': item
+                                    },
+                                    success: function(response){
+                                        alert("delete article successfully");
+                                    },
+                                    error: function(error){
+
+                                    }
+                                });
+                            }else{
+                                alert("not a stuff");
+                            }   
+                        });
+                        var add = false;
+                        view.click(function(){
+                            
+                            $.ajax({
+                                type: 'POST',
+                                url: '/view_comment',
+                                data:{
+                                    'item': item
+                                },
+                                success: function(response){
+                                    
+                                    if(add == false){
+                                        var commentTitle = $('<p>').text("comment: ");
+                                        itemDiv.append(commentTitle);
+                                        for (var i = 0; i < response.length; i++) {
+                                            var comment = response[i];
+                                            
+                                            var commentElement = $('<p>').addClass("comment").text(comment[0]+"\ntype:"+comment[2]+"\nusername:"+comment[1]);
+                                            
+                                            var deletec = $('<button>').text('Delete');
+                                            
+                                            deletec.on('click', function() {
+                                                var userType = "{{type}}";
+                                                if (userType!='student'){
+                                                    $(this).parent().remove(); 
+                                                    $.ajax({
+                                                        type: 'POST',
+                                                        url: '/delete_comment',
+                                                        data:{
+                                                            'item': item,
+                                                            'content': comment
+                                                            
+                                                        },
+                                                        success: function(response){
+                                                            alert("delete comment");
+                                                        },
+                                                        error: function(response){
+
+                                                        }
+                                                    });
+                                                }else{
+                                                    alert("not a staff, cannot delete comment.");
+                                                }
+                                                
+
+                                            });
+                                            
+                                            
+                                            commentElement.append(deletec);
+                                            itemDiv.append(commentElement);
+                                        }
+                                        add = true;
+                                    }else{
+                                        itemDiv.find('.comment').remove();
+                                        
+                                        
+                                        for (var i = 0; i < response.length; i++) {
+                                            var comment = response[i];
+                                            var commentElement = $('<p>').addClass("comment").text(comment[0]+"\ntype:"+comment[2]+"\nusername:"+comment[1]);
+                                            var deletec = $('<button>').text('Delete');
+                                            deletec.on('click', function() {
+                                                var userType = "{{type}}";
+                                                if(userType!='student'){
+                                                    $(this).parent().remove(); 
+                                                    $.ajax({
+                                                        type: 'POST',
+                                                        url: '/delete_comment',
+                                                        data:{
+                                                            'item': item,
+                                                            'content': comment
+                                                            
+                                                        },
+                                                        success: function(response){
+                                                            alert("delete comment");
+                                                        },
+                                                        error: function(response){
+
+                                                        }
+                                                    });
+                                                }else{
+                                                    alert("Not a satff, cannot delete comments.");
+                                                }
+                                                
+
+                                            });
+                                            
+                                            
+                                            commentElement.append(deletec);
+                                            itemDiv.append(commentElement);
+                                        }
+                                    }
+                                    
+
+                                },
+                                error: function(error){
+
+                                }
+                            });
+                        });
+                        var userType = "{{ type }}";
+                        var modify = $('<button>').text('modify').click(function(){
+                            if (userType==='admin' || userType==='academic' || userType==='administtative'){
+                                openDialog(item);
+                            }else{
+                                var match = item.match(/username:\s*([^\s<]+)/);
+                                var actualUsername = "{{username}}"
+                                if(match[1]===actualUsername){
+                                    openDialog(item);
+                                }else{
+                                    alert("not a staff and not your own article.");
+                                }
+                                
+                            }
+                            
+                        });
+                        itemDiv.append(deleteButton,input,commentButton,view,modify);
+                        $('#knowledgeBox').append(itemDiv);
+                    });
+                }
+                else{
+
+                }
+                
+                
+            },
+            error: function(error){
+                console.error('Failed to fetch knowledge repository:', error);
+            }
+
+        });
+    }
+
+
+    function mute(){
+        var userType = "{{type}}";
+        if(userType!='student'){
+            let muteuser = $("#mute").val();
+            $("#mute").val("");
+            $.ajax({
+                url: '/mute_user',
+                method: 'POST',
+                data: {'muteuser': muteuser},
+                success: function(response){
+                    alert(response);
+                },
+                error: function(error){
+                    console.error("no mute")
+                }
+            });
+        }else{
+            alert("you are not a stuff! you cannot mute users!");
+        }
+        
+    }
+
+
+    function unmute(){
+        var userType = "{{type}}";
+        if(userType!='student'){
+            let muteuser = $("#mute").val();
+            $("#mute").val("");
+            $.ajax({
+                url: '/unmute_user',
+                method: 'POST',
+                data: {'muteuser': muteuser},
+                success: function(response){
+                    alert(response);
+                },
+                error: function(error){
+                    console.error("no mute")
+                }
+            });
+        }else{
+            alert("you are not a stuff! you cannot unmute users!");
+        }
+        
+    }
+
+
+    function generateSymmetricKey(Password) { //add
+
+        let iterations = 1000;
+        let keyLength = 256 / 32;
+
+        let key = CryptoJS.PBKDF2(Password, "", { keySize: keyLength, iterations: iterations });
+
+        hisKey = CryptoJS.enc.Hex.stringify(key);
+        return hisKey;
+    }
+
+    let historyKey = generateSymmetricKey(Password); //add
+
+    function encryptMessage(message) { //add
+        let encrypted = CryptoJS.AES.encrypt(message, historyKey).toString();
+            if (!message) {
+            console.error("Message is empty or undefined.");
+            return;
+        }else if(!historyKey){
+            console.error("key is empty or undefined.");
+            return;
+        }
+        return encrypted;
+    }
+    
+    function decryptMessage(encryptedMsg) { //add
+        let decrypted = CryptoJS.AES.decrypt(encryptedMsg, historyKey);
+        return decrypted.toString(CryptoJS.enc.Utf8);
+    }
+
+
+
+    let username = "{{ username }}";
+    let room_id = 0;
+    Cookies.set('username', username);
+
+    
+
+    {#               Generate key pairs and send the public key to the server                    #}
+    var privateKey;
+    var publicKey;
+    
+
+    var friendStatusList = [];
+
+    socket.on('friendStatusResponse', function(data) {
+        friendStatusList = [];
+        data.forEach(function(item) {
+            friendStatusList.push(item);
+        });
+        console.log('Friend status list updated:', friendStatusList);
+    });
+
+    {#               Get friend list from server , display on the screen(on click the button)                    #}
+    function getFriendlist(username){
+        socket.emit("getFriendstatus", username);
+        $.ajax({
+            type: 'POST',
+            url: '/get_friend_list',
+            data: {'username': username},
+            success: function(response){
+                if (response!=''){
+                    var i = 0;
+                    var ChatListContainer = $('#chat_list');
+                    ChatListContainer.empty();
+                    response = response.replace(/^,/, '');
+                    $('#friend_list').html(response);
+                    var items = response.split(',');
+                    items.forEach(function(item) {
+                        
+                        var listItem = $('<div>').text(item.trim());
+
+                        receiver = item.trim();
+                        listItem.append(" " + friendStatusList[i] + " " + friendStatusList[i+1]);
+                        i+=2;
+                        
+                        var chatButton = $('<button>').text('chat');
+                        listItem.append(chatButton);
+                        var deleteButton = $('<button>').text('delete');
+                        listItem.append(deleteButton);
+                        ChatListContainer.append(listItem);
+                        chatButton.click(function(){
+                            var muteState = "{{mute}}";
+                            
+                            if (muteState=='False'){
+                                socket.emit("join", username, item.trim(), (res) => {
+                                    // res is a string with the error message if the error occurs
+                                    // this is a pretty bad way of doing error handling, but watevs
+                                    if (typeof res != "number") {
+                                        alert(res);
+                                        return;
+                                    }
+                                    // set the room id variable to the room id returned by the server
+                                    room_id = res;
+                                    Cookies.set("room_id", room_id);
+                                    // now we'll show the input box, so the user can input their message
+                                    $("#chat_box").hide();
+                                    $("#input_box").show();
+                                });
+                            }else{
+                                alert("staff has mute you");
+                            }
+                                
+                        });
+                        deleteButton.click(function(){
+                            alert("you are trying to delete your friend!");
+                            $.ajax({
+                                type: 'POST',
+                                url: '/remove_friend',
+                                data: {'item': item, 'username': username},
+                                success: function(response){
+                                    getFriendlist(username);
+                                },
+                                error: function(error){
+                                    alert(error);
+                                }
+
+                            })
+                        });
+                    });
+                }else{
+                    $('#friend_list').html("empty");
+                    var ChatListContainer = $('#chat_list');
+                    ChatListContainer.empty();
+                }
+                
+
+                
+            },
+            error: function(error){
+                console.log('Error:', error);
+            }
+
+        });
+    }
+    
+    
+
+
+
+    {#               send Request, so update your friend_list and his wait_list in the database                   #}
+    function sendrequest(username){
+        var friendName = document.getElementById("friendName").value;
+        if (!friendName) {
+            alert("Please enter a friend's name.");
+            return;
+        }
+        $.ajax({
+            type: 'POST',
+            url: '/add_friend',
+            data: {'username': username, 'friend': friendName},
+            success: function(response){
+                $('#request').html(response);
+                
+            },
+            error: function(error){
+                console.log('Error:', error);
+            }
+        });
+    }
+
+    {#               Get  wait list and displayed on the screen(on click the button)                    #}
+    function getWaitlist(username){
+        $.ajax({
+            type: 'POST',
+            url: '/get_wait_list',
+            data: {'username': username},
+            success: function(response){
+                
+                if (response!="empty"){
+                    var items = response.split(',');
+                    var waitListContainer = $('#wait_list');
+                    waitListContainer.empty();
+                
+                    items.forEach(function(item) {
+                        if(item!=''){
+                            var listItem = $('<div>').text(item.trim()); 
+                            var agreeButton = $('<button>').text('Agree');
+                            var rejectButton = $('<button>').text('Reject');
+                            listItem.append(agreeButton, rejectButton);
+                            waitListContainer.append(listItem);
+                            agreeButton.click(function(){
+                                listItem.hide();
+                                $.ajax({
+                                    type: 'POST',
+                                    url: '/remove_item', 
+                                    data: {
+                                        'item': item,
+                                        'username': username
+                                    },
+                                    success: function(response) {
+                                        
+                                    },
+                                    error: function(error) {
+                                    
+                                    }
+                                });
+
+                                $.ajax({
+                                    type: 'POST',
+                                    url: '/add_to_list',
+                                    data: {
+                                        'item': item,
+                                        'username': username
+                                    },
+                                    success: function(response) {
+                                        
+                                    },
+                                    error: function(error) {
+                                    
+                                    }
+                                });
+
+                            });
+                            
+                            rejectButton.click(function(){
+                                listItem.hide();
+                                $.ajax({
+                                    type: 'POST',
+                                    url: '/remove_item', 
+                                    data: {
+                                        'item': item,
+                                        'username': username
+                                        },
+                                    success: function(response) {
+                                        alert(2);
+                                    },
+                                    error: function(error) {
+                                    
+                                    }
+                                });
+                            });
+                            
+                        }
+                        
+                    });
+                }else{
+                    var waitListContainer = $('#wait_list');
+                    waitListContainer.append(response);
+                }    
+
+            },
+            error: function(error){
+                console.log('Error:', error);
+            }
+        });
+    }
+
+    {#               Get  Request list and   displayed on the screen(on click the button)           #}
+    function getRequestlist(username){
+        $.ajax({
+            type: 'POST',
+            url: '/get_request_list',
+            data: {'username': username},
+            success: function(response){
+                
+                $('#request').html(response);
+                
+            },
+            error: function(error){
+                console.log('Error:', error);
+            }
+        });
+    }
+
+    // when the user presses the "Enter" key inside of the "message box", 
+    // the message is sent to the server
+    $("#message").on("keyup", (e) => {
+        if (e.key == "Enter") {
+            send();
+        }
+    })
+
+    // when the user presses the enter key inside of the "receiver box"
+    // the user joins a (socket) room
+     $("#receiver").on("keyup", (e) => {
+        if (e.key == "Enter") {
+            join_room();
+        }
+    })
+
+    
+    $(document).ready(() => {
+        var crypt = new JSEncrypt({ default_key_size: 2048 });
+            crypt.getKey();
+            publicKey = crypt.getPublicKey();
+            privateKey = crypt.getPrivateKey();
+            
+            $.ajax({
+                type: 'POST',
+                url: '/send_public_key', 
+                data: { 'username': username,
+                        'public_key': publicKey 
+                        }, 
+                success: function(response){
+                    console.log('Public key sent to server successfully.');
+                },
+                error: function(error){
+                    console.log('Error:', error);
+                }
+            });
+
+        // room_id is undefined if the user hasn't joined a room
+        // we early return in this case
+        if (Cookies.get("room_id") == undefined) {
+            return;
+        }
+
+        // the user has already joined an existing room
+        // we'll display the message box, instead of the "Chat with: " box
+        $("#chat_box").hide();
+        $("#input_box").show();
+        room_id = parseInt(Cookies.get("room_id"));
+
+
+        
+    })
+    
+
+    // Here's the Socket IO part of the code
+    // things get a bit complicated here so brace yourselves :P
+    
+
+    // initializes the socket, execute the connect function
+
+
+
+    // an incoming message arrives, we'll add the message to the message box
+    socket.on("incoming", (msg, color="black") => {
+
+        add_message(msg, color);
+    })
+
+    socket.on("incoming_public", (msg, color="black") => {
+        add_messages(msg, color);
+    })
+
+    socket.on("history", (msg, color="black") => { //add history
+        let decryptedMsg = decryptMessage(msg);
+        console.log(decryptedMsg);
+        let lines = decryptedMsg.split("\n");
+        lines.forEach(function(line) {
+            add_messages(line, color);
+        });
+    });
+
+    socket.on("error_message", (errorMessage) => { //add error handler
+        alert(errorMessage);
+        return;
+    });
+
+
+
+    function add_messages(message, color) {
+            let box = $("#message_box");
+            let child = $(`<p style="color:${color}; margin: 0px;"></p>`).text(message);
+            box.append(child);
+        }
+
+    let receiver;
+
+    // we emit a join room event to the server to join a room
+    function join_room() {
+        var muteState = "{{mute}}"
+        if(muteState=='False'){
+            receiver = $("#receiver").val();
+
+            // pass in the receiver of our message to the server
+
+            // as well as the current user's username
+
+            socket.emit("join", username, receiver, (res) => {
+
+                // res is a string with the error message if the error occurs
+
+                // this is a pretty bad way of doing error handling, but watevs
+
+                if (typeof res != "number") {
+                    alert(res);
+                    return;
+                }
+
+                // set the room id variable to the room id returned by the server
+                room_id = res;
+                Cookies.set("room_id", room_id);
+
+                // now we'll show the input box, so the user can input their message
+                $("#chat_box").hide();
+
+                $("#input_box").show();
+            });
+        }else{
+            alert("staff has muted you");
+        }
+        
+     
+    }
+    // we'll send the message to the server by emitting a "send" event
+
+
+   
+    function send() {
+        //get the message
+        if (parseInt(Cookies.get("room_id")) > 1000) {
+            let message = $("#message").val();
+            $("#message").val("");  // Clear the message input box
+            socket.emit("send", username, message, parseInt(Cookies.get("room_id")));
+            return;  // Stop further execution
+        }
+        
+        $.ajax({
+            type: 'POST',
+            url: '/get_public_key',
+            data: {'username': receiver},
+            success: function(response){
+                
+                let message = $("#message").val(); 
+                let color = "black"; 
+                let box = $("#message_box");
+                let child = $(`<p style="color:${color}; margin: 0px;"></p >`).text(username+":"+message);
+                box.append(child);
+                 {#               Send encrypt message along with the MAC           #}
+                var crypt = new JSEncrypt({ default_key_size: 2048 });
+                crypt.setPublicKey(response);
+                var encryptedMessage = crypt.encrypt(message);
+                //clear the message input box
+                $("#message").val(""); 
+
+                var hash1 = CryptoJS.SHA256(message).toString();
+                
+                var encryptedHash = crypt.encrypt(hash1);
+
+                //send the message to the server
+                console.log(encryptedMessage);
+                socket.emit("send", username, encryptedMessage, room_id);
+
+
+                //send the MAC code to the server
+                socket.emit("send", username, encryptedHash, room_id);
+                //alert(encryptedHash);
+                
+            },
+            error: function(error){
+                console.log('Error:', error);
+            }
+
+        });
+        
+    } 
+    
+
+    // function when the user clicks on "Leave Room"
+    // emits a "leave" event, telling the server that we want to leave the room
+    function leave() {
+
+        let blackMessages = $("#message_box p").filter(function() { //add
+            return $(this).css("color") === "rgb(0, 0, 0)";
+        });
+
+        let messages = blackMessages.map(function() { //add
+            return $(this).text() + "\n";
+        }).get().join("");
+
+        let encryptedMessages = encryptMessage(messages); //add
+        socket.emit("getHistory", username, encryptedMessages, receiver); //add
+
+        room_id = Cookies.get("room_id");
+        Cookies.remove("room_id");
+        console.log(room_id);
+        socket.emit("leave", username, room_id);
+        $("#message_box p").remove(); //add clear message box
+        $("#input_box").hide();
+        $("#chat_box").show();
+    }
+
+
+    function setPrivate(username) {
+        socket.emit("setPrivate", username);
+    }
+
+    function setBusy(username) {
+        socket.emit("setBusy", username);
+    }
+
+
+    var hash2;
+    function add_message(message, color) {
+
+        {#               split the part(username: message), only decrypt the message part          #}
+        {#               Calculate the hash and compared with the received MAC code           #}
+
+
+        let box = $("#message_box");
+
+
+        {#  split the parts, only preserve the message, ignore the username.    #}
+        let parts = message.split(':');
+
+        let firstPart = parts[0];
+        if (parts.length < 2) {
+            let child = $(`<p style="color:${color}; margin: 0px;"></p>`).text(message);
+            box.append(child);
+        }
+
+        else{
+            
+            
+            let messagePart = parts[1];
+            
+            
+            
+            var crypt = new JSEncrypt({ default_key_size: 2048 });
+            crypt.setPrivateKey(privateKey);
+            var decryptedMessage = crypt.decrypt(messagePart);
+            
+            {# If you receive the message, not the hash: you calculate the hash value#}
+            
+            if (decryptedMessage.length!=64){
+                hash2 = CryptoJS.SHA256(decryptedMessage).toString();
+                
+                let child2 = $(`<p style="color:${color}; margin: 0px;"></p>`).text(firstPart+":"+decryptedMessage);
+                
+                
+                box.append(child2);
+                
+
+                
+                
+            }
+            else{
+                
+
+                var messageHashCookie = hash2;
+                var macCookie = decryptedMessage;
+                if (messageHashCookie === macCookie) {
+                    console.log("The message has't been modified by server.");
+                } else {
+                    console.log("The message is modified.");
+                    alert(hash2);
+                    alert(macCookie);
+                    alert("someone modifty the message sent to you!");
+                }               
+            }
+            
+
+
+            
+        }
+
+    }
+
+    function public_chat(username,room_id){
+       
+        //let receiver = $("#receiver").val();
+
+        // pass in the receiver of our message to the server
+        // as well as the current user's username
+        socket.emit("join_public", username, room_id, (res) => {
+            // res is a string with the error message if the error occurs
+            // this is a pretty bad way of doing error handling, but watevs
+            if (typeof res != "number") {
+                alert(res);
+                return;
+            }
+
+            // set the room id variable to the room id returned by the server
+            //room_id = res;
+            
+            Cookies.set("room_id", room_id);
+
+            // now we'll show the input box, so the user can input their message
+            $("#chat_box").hide();
+            $("#input_box").show();
+        });
+     
+    
+    }
+    
+    
+</script>
+{% endblock %}
